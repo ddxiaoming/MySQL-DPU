@@ -547,12 +547,17 @@ log_close(void)
 	}
 
     // 找到脏页链表中的最后一个脏页的oldest_modification
+    // 如果当前oldest_lsn为0，说明flush_list中没有脏页
 	oldest_lsn = buf_pool_get_oldest_modification();
-
 	if (!oldest_lsn
 	    || lsn - oldest_lsn > log->max_modified_age_sync
 	    || checkpoint_age > log->max_checkpoint_age_async) {
 
+    /*
+     * 当check_flush_or_checkpoint被设置时，
+     * 用户线程在每次修改数据前调用log_free_check时，
+     * 会根据该标记决定是否刷redo日志或者脏页
+     * */
 		log->check_flush_or_checkpoint = true;
 	}
 function_exit:
@@ -1781,6 +1786,7 @@ log_append_on_checkpoint(
 blocks from the buffer pool: it only checks what is lsn of the oldest
 modification in the pool, and writes information about the lsn in
 log files. Use log_make_checkpoint_at() to flush also the pool.
+做checkpoint，只写checkpoint信息，不刷脏页
 @param[in]	sync		whether to wait for the write to complete
 @param[in]	write_always	force a write even if no log
 has been generated since the latest checkpoint
@@ -1807,6 +1813,7 @@ log_checkpoint(
 	case SRV_UNIX_LITTLESYNC:
 	case SRV_UNIX_O_DIRECT:
 	case SRV_UNIX_O_DIRECT_NO_FSYNC:
+    // 把page cache中的缓存fsync到磁盘。Why？？？
 		fil_flush_file_spaces(FIL_TYPE_TABLESPACE);
 	}
 #endif /* !_WIN32 */
@@ -1851,6 +1858,9 @@ log_checkpoint(
 		= srv_shutdown_state == SRV_SHUTDOWN_NONE
 		|| flush_lsn != log_sys->lsn;
 
+  // 向redo log中写入MLOG_FILE_NAME和MLOG_CHECKPOINT类型的日志
+  // 这两种类型的日志主要是为了崩溃恢复时，仅仅扫描redo log就能构建恢复过程中需要的space_id -> file_path的映射表
+  // 而不用打开所有表空间来构建一遍space_id -> file_path的映射表
 	if (fil_names_clear(flush_lsn, do_write)) {
 		ut_ad(log_sys->lsn >= flush_lsn + SIZE_OF_MLOG_CHECKPOINT);
 		flush_lsn = log_sys->lsn;
@@ -1858,6 +1868,8 @@ log_checkpoint(
 
 	log_mutex_exit();
 
+  // 为什么checkpoint中要fsync redo log???
+  // 因为fil_names_clear()函数可能向log buffer中写入了MLOG_FILE_NAME和MLOG_CHECKPOINT类型的日志
 	log_write_up_to(flush_lsn, true);
 
 	DBUG_EXECUTE_IF(
@@ -1879,11 +1891,13 @@ log_checkpoint(
 	ut_ad(log_sys->flushed_to_disk_lsn >= flush_lsn);
 	ut_ad(flush_lsn >= oldest_lsn);
 
+  // 上一次checkpoint之后没有产生新的脏页，不需要再进行checkpoint
 	if (log_sys->last_checkpoint_lsn >= oldest_lsn) {
 		log_mutex_exit();
 		return(true);
 	}
 
+  // 有checkpoint未执行完毕
 	if (log_sys->n_pending_checkpoint_writes > 0) {
 		/* A checkpoint write is running */
 		log_mutex_exit();
@@ -1898,6 +1912,7 @@ log_checkpoint(
 	}
 
 	log_sys->next_checkpoint_lsn = oldest_lsn;
+  // 写入checkpoint info，不会触发脏页刷新
 	log_write_checkpoint_info(sync);
 	ut_ad(!log_mutex_own());
 

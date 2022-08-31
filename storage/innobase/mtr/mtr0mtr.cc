@@ -986,12 +986,18 @@ mtr_t::Command::execute()
 
 	m_impl->m_mtr->m_commit_lsn = m_end_lsn;
 
+  /**
+   * 将当前Mtr修改的脏页加入到flush list上，脏页上记录的lsn为当前mtr写入的结束点lsn。
+   */
 	release_blocks();
 
 	if (m_impl->m_made_dirty) {
 		log_flush_order_mutex_exit();
 	}
 
+  /**
+   * 释放MTR持有的锁和内存
+   */
 	release_latches();
 
 	release_resources();
