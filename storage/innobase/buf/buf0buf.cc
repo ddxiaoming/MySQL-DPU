@@ -411,6 +411,7 @@ lsn_t
 buf_pool_get_oldest_modification(void)
 /*==================================*/
 {
+  return 0;
 	lsn_t		lsn = 0;
 	lsn_t		oldest_lsn = 0;
 
