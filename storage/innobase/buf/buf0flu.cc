@@ -40,7 +40,8 @@ Created 11/11/1995 Heikki Tuuri
 #ifdef UNIV_NONINL
 #include "buf0flu.ic"
 #endif
-
+#include <iomanip>
+#include <chrono>
 #include "buf0buf.h"
 #include "buf0checksum.h"
 #include "srv0start.h"
@@ -3189,7 +3190,9 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 	int64_t		sig_count = os_event_reset(buf_flush_event);
 
 	while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
-
+    ulint n_flush_from_lru_list = 0, n_flush_from_flush_list = 0;
+    auto t1 = std::chrono::system_clock::now();
+    auto time_t1 = std::chrono::system_clock::to_time_t(t1);
 		/* The page_cleaner skips sleep if the server is
 		idle and there are no pending IOs in the buffer pool
 		and there is work to do. */
@@ -3250,6 +3253,8 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 		if (ret_sleep != OS_SYNC_TIME_EXCEEDED
 		    && srv_flush_sync
 		    && buf_flush_sync_lsn > 0) {
+      std::cout << "[ " << std::put_time(std::localtime(&time_t1), "%H:%M:%S") <<
+                " ]" << " Starting a new flush circle. Flush type: sync." << std::endl;
 			/* woke up for flush_sync */
 			mutex_enter(&page_cleaner->mutex);
 			lsn_t	lsn_limit = buf_flush_sync_lsn;
@@ -3285,8 +3290,12 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 			}
 
 			n_flushed = n_flushed_lru + n_flushed_list;
+      n_flush_from_lru_list += n_flushed_lru;
+      n_flush_from_flush_list += n_flushed_list;
 
 		} else if (srv_check_activity(last_activity)) {
+      std::cout << "[ " << std::put_time(std::localtime(&time_t1), "%H:%M:%S") <<
+                " ]" << " Starting a new flush circle. Flush type: activity async." << std::endl;
 			ulint	n_to_flush;
 			lsn_t	lsn_limit = 0;
 
@@ -3349,9 +3358,13 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 					MONITOR_FLUSH_ADAPTIVE_PAGES,
 					n_flushed_list);
 			}
+      n_flush_from_lru_list += n_flushed_lru;
+      n_flush_from_flush_list += n_flushed_list;
 
 		} else if (ret_sleep == OS_SYNC_TIME_EXCEEDED) {
 			/* no activity, slept enough */
+      std::cout << "[ " << std::put_time(std::localtime(&time_t1), "%H:%M:%S") <<
+                " ]" << " Starting a new flush circle. Flush type: idle async." << std::endl;
 			buf_flush_lists(PCT_IO(100), LSN_MAX, &n_flushed);
 
 			n_flushed_last += n_flushed;
@@ -3364,12 +3377,17 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
 					n_flushed);
 
 			}
-
+      n_flush_from_flush_list += n_flushed;
 		} else {
 			/* no activity, but woken up by event */
 			n_flushed = 0;
 		}
-
+    auto t2 = std::chrono::system_clock::now();
+    auto time_t2 = std::chrono::system_clock::to_time_t(t2);
+    std::cout << "[" << std::put_time(std::localtime(&time_t2), "%H:%M:%S") <<
+              "]" << "Flushed " << n_flush_from_flush_list << " pages from flush_list, " <<
+              n_flush_from_lru_list << " pages from lru_list. Using " <<
+              ((t2 - t1).count() / 1000 / 1000) << " ms." << std::endl;
 		ut_d(buf_flush_page_cleaner_disabled_loop());
 	}
 
