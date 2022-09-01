@@ -3394,7 +3394,7 @@ DECLARE_THREAD(buf_flush_page_cleaner_coordinator)(
     std::cout << "[" << std::put_time(std::localtime(&time_t2), "%H:%M:%S") <<
               "]" << "Flushed " << n_flush_from_lru_list << " pages from flush_list, " <<
               n_flush_from_lru_list << " pages from lru_list. Using " <<
-              ((t2 - t1).count() / 1000) << " us." << std::endl;
+              ((t2 - t1).count() / 1000 / 1000) << " ms." << std::endl;
 		ut_d(buf_flush_page_cleaner_disabled_loop());
 	}
 

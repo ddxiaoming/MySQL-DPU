@@ -344,40 +344,40 @@ struct ReleaseBlocks {
 	}
 
 	/** Add the modified page to the buffer flush list. */
-	void add_dirty_page_to_flush_list(mtr_memo_slot_t* slot) const
-	{
-		ut_ad(m_end_lsn > 0);
-		ut_ad(m_start_lsn > 0);
-
-		buf_block_t*	block;
-
-		block = reinterpret_cast<buf_block_t*>(slot->object);
-
-		buf_flush_note_modification(block, m_start_lsn,
-					    m_end_lsn, m_flush_observer);
-	}
+//	void add_dirty_page_to_flush_list(mtr_memo_slot_t* slot) const
+//	{
+//		ut_ad(m_end_lsn > 0);
+//		ut_ad(m_start_lsn > 0);
+//
+//		buf_block_t*	block;
+//
+//		block = reinterpret_cast<buf_block_t*>(slot->object);
+//
+//		buf_flush_note_modification(block, m_start_lsn,
+//					    m_end_lsn, m_flush_observer);
+//	}
 
 	/** @return true always. */
 	bool operator()(mtr_memo_slot_t* slot) const
 	{
-		if (slot->object != NULL) {
-
-			if (slot->type == MTR_MEMO_PAGE_X_FIX
-			    || slot->type == MTR_MEMO_PAGE_SX_FIX) {
-
-				add_dirty_page_to_flush_list(slot);
-
-			} else if (slot->type == MTR_MEMO_BUF_FIX) {
-
-				buf_block_t*	block;
-				block = reinterpret_cast<buf_block_t*>(
-					slot->object);
-				if (block->made_dirty_with_no_latch) {
-					add_dirty_page_to_flush_list(slot);
-					block->made_dirty_with_no_latch = false;
-				}
-			}
-		}
+//		if (slot->object != NULL) {
+//
+//			if (slot->type == MTR_MEMO_PAGE_X_FIX
+//			    || slot->type == MTR_MEMO_PAGE_SX_FIX) {
+//
+//				add_dirty_page_to_flush_list(slot);
+//
+//			} else if (slot->type == MTR_MEMO_BUF_FIX) {
+//
+//				buf_block_t*	block;
+//				block = reinterpret_cast<buf_block_t*>(
+//					slot->object);
+//				if (block->made_dirty_with_no_latch) {
+//					add_dirty_page_to_flush_list(slot);
+//					block->made_dirty_with_no_latch = false;
+//				}
+//			}
+//		}
 
 		return(true);
 	}
@@ -975,9 +975,9 @@ mtr_t::Command::execute()
 		finish_write(len);
 	}
 
-	if (m_impl->m_made_dirty) {
-		log_flush_order_mutex_enter();
-	}
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_enter();
+//	}
 
 	/* It is now safe to release the log mutex because the
 	flush_order mutex will ensure that we are the first one
@@ -991,9 +991,9 @@ mtr_t::Command::execute()
    */
 	release_blocks();
 
-	if (m_impl->m_made_dirty) {
-		log_flush_order_mutex_exit();
-	}
+//	if (m_impl->m_made_dirty) {
+//		log_flush_order_mutex_exit();
+//	}
 
   /**
    * 释放MTR持有的锁和内存
