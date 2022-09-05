@@ -1,6 +1,7 @@
 cmake-build-debug/
 cmake-build-release/
-boost/
+.idea/
+mysql-test/
 *-t
 *_test
 *.Plo
