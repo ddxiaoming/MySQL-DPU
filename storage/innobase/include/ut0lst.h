@@ -298,6 +298,7 @@ ut_list_remove(
 	typename List::node_type&	node,
 	Functor				get_node)
 {
+  if (list.count == 0) return;
 	ut_a(list.count > 0);
 	UT_LIST_IS_INITIALISED(list);
 
