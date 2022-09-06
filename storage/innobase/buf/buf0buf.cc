@@ -6642,7 +6642,6 @@ buf_stats_get_pool_info(
 	pool_info->n_pend_unzip = UT_LIST_GET_LEN(buf_pool->unzip_LRU);
 
 	pool_info->n_pend_reads = buf_pool->n_pend_reads;
-
 	pool_info->n_pending_flush_lru =
 		 (buf_pool->n_flush[BUF_FLUSH_LRU]
 		  + buf_pool->init_flush[BUF_FLUSH_LRU]);
