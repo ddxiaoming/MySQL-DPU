@@ -822,6 +822,10 @@ static SHOW_VAR innodb_status_variables[]= {
   (char*) &export_vars.innodb_buffer_pool_bytes_dirty,	  SHOW_LONG, SHOW_SCOPE_GLOBAL},
   {"buffer_pool_pages_flushed",
   (char*) &export_vars.innodb_buffer_pool_pages_flushed,  SHOW_LONG, SHOW_SCOPE_GLOBAL},
+{"buffer_pool_pages_flushed_from_flush_list",
+(char*) &export_vars.innodb_buffer_pool_pages_flushed_from_flush_list,  SHOW_LONG, SHOW_SCOPE_GLOBAL},
+{"buffer_pool_pages_flushed_from_lru_list",
+(char*) &export_vars.innodb_buffer_pool_pages_flushed_from_lru_list,  SHOW_LONG, SHOW_SCOPE_GLOBAL},
   {"buffer_pool_pages_free",
   (char*) &export_vars.innodb_buffer_pool_pages_free,	  SHOW_LONG, SHOW_SCOPE_GLOBAL},
 #ifdef UNIV_DEBUG

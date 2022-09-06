@@ -115,7 +115,8 @@ struct srv_stats_t {
 	/** Count the number of pages that were written from buffer
 	pool to the disk */
 	ulint_ctr_1_t		buf_pool_flushed;
-
+  ulint_ctr_1_t buf_pool_flushed_from_flush_list;
+  ulint_ctr_1_t buf_pool_flushed_from_lru_list;
 	/** Number of buffer pool reads that led to the reading of
 	a disk page */
 	ulint_ctr_1_t		buf_pool_reads;
@@ -875,7 +876,7 @@ srv_master_thread_disabled_debug_update(
 #endif /* UNIV_DEBUG */
 
 /** Status variables to be passed to MySQL */
-struct export_var_t{
+struct export_var_t {
 	ulint innodb_data_pending_reads;	/*!< Pending reads */
 	ulint innodb_data_pending_writes;	/*!< Pending writes */
 	ulint innodb_data_pending_fsyncs;	/*!< Pending fsyncs */
@@ -901,6 +902,8 @@ struct export_var_t{
 	ulint innodb_buffer_pool_reads;		/*!< srv_buf_pool_reads */
 	ulint innodb_buffer_pool_wait_free;	/*!< srv_buf_pool_wait_free */
 	ulint innodb_buffer_pool_pages_flushed;	/*!< srv_buf_pool_flushed */
+	ulint innodb_buffer_pool_pages_flushed_from_lru_list;
+  ulint innodb_buffer_pool_pages_flushed_from_flush_list;
 	ulint innodb_buffer_pool_write_requests;/*!< srv_buf_pool_write_requests */
 	ulint innodb_buffer_pool_read_ahead_rnd;/*!< srv_read_ahead_rnd */
 	ulint innodb_buffer_pool_read_ahead;	/*!< srv_read_ahead */

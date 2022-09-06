@@ -162,6 +162,8 @@ struct buf_pool_info_t{
 	ulint	n_pend_reads;		/*!< buf_pool->n_pend_reads, pages
 					pending read */
 	ulint	n_pending_flush_lru;	/*!< Pages pending flush in LRU */
+	ulint n_flushed_from_lru_list;
+  ulint n_flushed_from_flush_list;
 	ulint	n_pending_flush_single_page;/*!< Pages pending to be
 					flushed as part of single page
 					flushes issued by various user
@@ -2042,6 +2044,8 @@ struct buf_pool_stat_t{
 				as part of random read ahead */
 	ulint	n_ra_pages_read;/*!< number of pages read in
 				as part of read ahead */
+  ulint	n_flushed_from_flush_list;
+  ulint	n_flushed_from_lru_list;
 	ulint	n_ra_pages_evicted;/*!< number of read ahead
 				pages that are evicted without
 				being accessed */

@@ -1299,6 +1299,12 @@ srv_printf_innodb_monitor(
 	fputs("----------------------\n"
 	      "BUFFER POOL AND MEMORY\n"
 	      "----------------------\n", file);
+  fprintf(file,
+          "flushed_from_flush_list " ULINTPF "\n"
+          "flushed_from_lru_list " ULINTPF "\n",
+          static_cast<unsigned long >(srv_stats.buf_pool_flushed_from_flush_list),
+          static_cast<unsigned long >(srv_stats.buf_pool_flushed_from_lru_list));
+
 	fprintf(file,
 		"Total large memory allocated " ULINTPF "\n"
 		"Dictionary memory allocated " ULINTPF "\n",
@@ -1419,6 +1425,13 @@ srv_export_innodb_status(void)
 
 	export_vars.innodb_buffer_pool_pages_flushed =
 		srv_stats.buf_pool_flushed;
+
+  export_vars.innodb_buffer_pool_pages_flushed_from_lru_list =
+      srv_stats.buf_pool_flushed_from_lru_list;
+
+  export_vars.innodb_buffer_pool_pages_flushed_from_flush_list =
+      srv_stats.buf_pool_flushed_from_flush_list;
+
 
 	export_vars.innodb_buffer_pool_reads = srv_stats.buf_pool_reads;
 
