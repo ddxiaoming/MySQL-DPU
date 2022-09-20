@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
-
+set(CMAKE_CXX_STANDARD 14)
 IF(WIN32)
   # CMake 2.8.12 is needed for Visual Studio 2013
   # CMake 3.1.0 is needed for $<TARGET_PDB_FILE:${target}>

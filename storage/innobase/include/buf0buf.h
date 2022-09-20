@@ -1553,7 +1553,7 @@ public:
 	/** Page size. Protected by buf_pool mutex. */
 	page_size_t	size;
 
-	/** Count of how manyfold this block is currently bufferfixed. */
+	/** Count of how many fold this block is currently bufferfixed. */
 	ib_uint32_t	buf_fix_count;
 
 	/** type of pending I/O operation; also protected by

@@ -365,8 +365,8 @@ page_create_low(
 	}
 
 	memset(page + PAGE_HEADER, 0, PAGE_HEADER_PRIV_END);
-	page[PAGE_HEADER + PAGE_N_DIR_SLOTS + 1] = 2;
-	page[PAGE_HEADER + PAGE_DIRECTION + 1] = PAGE_NO_DIRECTION;
+	page[PAGE_HEADER + PAGE_N_DIR_SLOTS + 1] = 2; // 初始化PAGE_N_DIR_SLOTS属性
+	page[PAGE_HEADER + PAGE_DIRECTION + 1] = PAGE_NO_DIRECTION; // // 初始化PAGE_DIRECTION属性
 
 	if (comp) {
 		page[PAGE_HEADER + PAGE_N_HEAP] = 0x80;/*page_is_comp()*/

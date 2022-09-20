@@ -767,8 +767,9 @@ struct log_t{
 					the log mutex */
 #endif /* !UNIV_HOTBACKUP */
 	byte*		checkpoint_buf_ptr;/* unaligned checkpoint header */
-	byte*		checkpoint_buf;	/*!< checkpoint header is read to this
-					buffer */
+
+  // 512字节的缓冲区，用于存放redo log的第一个block（log file header）
+	byte*		checkpoint_buf;	/*!< checkpoint header is read to this buffer */
 	/* @} */
 };
 

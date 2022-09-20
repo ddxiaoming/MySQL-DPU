@@ -223,7 +223,7 @@ struct recv_data_t{
 };
 
 /** Stored log record struct */
-struct recv_t{
+struct recv_t {
 	mlog_id_t	type;	/*!< log record type */
 	ulint		len;	/*!< log record body length in bytes */
 	recv_data_t*	data;	/*!< chain of blocks containing the log record
@@ -296,7 +296,7 @@ typedef std::vector<recv_encryption_t, ut_allocator<recv_encryption_t> >
 		encryption_list_t;
 
 /** Recovery system data structure */
-struct recv_sys_t{
+struct recv_sys_t {
 #ifndef UNIV_HOTBACKUP
 	ib_mutex_t		mutex;	/*!< mutex protecting the fields apply_log_recs,
 				n_addrs, and the state field in each recv_addr

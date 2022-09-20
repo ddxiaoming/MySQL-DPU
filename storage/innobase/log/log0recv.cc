@@ -33,7 +33,7 @@ Created 9/20/1997 Heikki Tuuri
 *******************************************************/
 
 #include "ha_prototypes.h"
-
+#include "apply0apply.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -1153,7 +1153,7 @@ recv_check_log_header_checksum(
 @return error code or DB_SUCCESS */
 static MY_ATTRIBUTE((warn_unused_result))
 dberr_t
-recv_find_max_checkpoint_0(
+recv_find_max_checkpoint_0( // 比较checkpoint1和checkpoint2，找出来最近写入的checkpoint
 	log_group_t**	max_group,
 	ulint*		max_field)
 {
@@ -1311,10 +1311,15 @@ recv_find_max_checkpoint(
 	while (group) {
 		group->state = LOG_GROUP_CORRUPTED;
 
+    // 读取redo log日志组中的第一个512字节的block（log file header）到log_sys->checkpoint_buf
 		log_group_header_read(group, 0);
 		/* Check the header page checksum. There was no
 		checksum in the first redo log format (version 0). */
+
+    // 读取LOG_HEADER_FORMAT属性
 		group->format = mach_read_from_4(buf + LOG_HEADER_FORMAT);
+
+    // 检查redo log的checksum
 		if (group->format != 0
 		    && !recv_check_log_header_checksum(buf)) {
 			ib::error() << "Invalid redo log header checksum.";
@@ -1346,8 +1351,10 @@ recv_find_max_checkpoint(
 		for (field = LOG_CHECKPOINT_1; field <= LOG_CHECKPOINT_2;
 		     field += LOG_CHECKPOINT_2 - LOG_CHECKPOINT_1) {
 
+      // 读取checkpoint1和checkpoint2属性
 			log_group_header_read(group, field);
 
+      // 校验block的checksum，判断block是否损坏
 			if (!recv_check_log_header_checksum(buf)) {
 				DBUG_PRINT("ib_log",
 					   ("invalid checkpoint,"
@@ -2210,12 +2217,13 @@ recv_add_to_hash_table(
 	lsn_t		start_lsn,	/*!< in: start lsn of the mtr */
 	lsn_t		end_lsn)	/*!< in: end lsn of the mtr */
 {
-	recv_t*		recv;
+	recv_t*		recv; // 针对每一条日志记录，都会有一个recv_t的结构来存储它
 	ulint		len;
 	recv_data_t*	recv_data;
 	recv_data_t**	prev_field;
 	recv_addr_t*	recv_addr;
 
+  // 下面这些类型的redo日志会被单独apply，不会被加入到哈希表
 	ut_ad(type != MLOG_FILE_DELETE);
 	ut_ad(type != MLOG_FILE_CREATE2);
 	ut_ad(type != MLOG_FILE_RENAME2);
@@ -2227,6 +2235,7 @@ recv_add_to_hash_table(
 
 	len = rec_end - body;
 
+  // 原来recv_sys->heap是一块堆内存，当recv_t也就是redo log需要内存的时候，从这里面分配
 	recv = static_cast<recv_t*>(
 		mem_heap_alloc(recv_sys->heap, sizeof(recv_t)));
 
@@ -2256,6 +2265,7 @@ recv_add_to_hash_table(
 #endif
 	}
 
+  // 将当前日志记录，放到与之对应的缓存对象中，表示当前日志所要恢复的位置就是在space, page_no页面中
 	UT_LIST_ADD_LAST(recv_addr->rec_list, recv);
 
 	prev_field = &(recv->data);
@@ -2264,6 +2274,7 @@ recv_add_to_hash_table(
 	recv_sys->heap grows into the buffer pool, and bigger chunks could not
 	be allocated */
 
+  // 将日志记录的内容，即日志体（body）写入到日志记录recv_t结构对象的data中
 	while (rec_end > body) {
 
 		len = rec_end - body;
@@ -2357,6 +2368,7 @@ recv_recover_page_func(
 		return;
 	}
 
+  // 根据page id和 space id获取recv_addr结构体，找到这个结构体，就能找到对应的redo log
 	recv_addr = recv_get_fil_addr_struct(block->page.id.space(),
 					     block->page.id.page_no());
 
@@ -2446,6 +2458,7 @@ recv_recover_page_func(
 			buf = ((byte*)(recv->data)) + sizeof(recv_data_t);
 		}
 
+    // 对于新建的页面，需要初始化一些属性
 		if (recv->type == MLOG_INIT_FILE_PAGE) {
 			page_lsn = page_newest_lsn;
 
@@ -2502,6 +2515,7 @@ recv_recover_page_func(
 				    recv_addr->space,
 				    recv_addr->page_no));
 
+      // 针对不同的redolog，对其进行apply
 			recv_parse_or_apply_log_rec_body(
 				recv->type, buf, buf + recv->len,
 				recv_addr->space, recv_addr->page_no,
@@ -2661,6 +2675,7 @@ loop:
 	recv_sys->apply_log_recs = TRUE;
 	recv_sys->apply_batch_on = TRUE;
 
+  /* 遍历HASH表，将HASH表中的每一个桶中的每一个页面做连续处理 */
 	for (i = 0; i < hash_get_n_cells(recv_sys->addr_hash); i++) {
 
 		for (recv_addr = static_cast<recv_addr_t*>(
@@ -2710,6 +2725,7 @@ loop:
 
 					mtr_start(&mtr);
 
+          // 从buffer pool获取一个page
 					block = buf_page_get(
 						page_id, page_size,
 						RW_X_LATCH, &mtr);
@@ -3165,9 +3181,12 @@ recv_parse_log_recs(
 
 	ut_ad(log_mutex_own());
 	ut_ad(recv_sys->parse_start_lsn != 0);
+  /* 一个大的循环，连续处理恢复缓冲区中的日志内容，直到处理完，或者剩下的不是一个完整的MTR为止 */
 loop:
+  // 当前日志缓冲区中，日志的起始位置
 	ptr = recv_sys->buf + recv_sys->recovered_offset;
 
+  // 当前日志缓冲区中，日志的结束位置
 	end_ptr = recv_sys->buf + recv_sys->len;
 
 	if (ptr == end_ptr) {
@@ -3175,6 +3194,7 @@ loop:
 		return(false);
 	}
 
+  // 判断日志的类型，是不是属于SINGLE_RECORD
 	switch (*ptr) {
 	case MLOG_CHECKPOINT:
 #ifdef UNIV_LOG_LSN_DEBUG
@@ -3187,6 +3207,7 @@ loop:
 		single_rec = !!(*ptr & MLOG_SINGLE_REC_FLAG);
 	}
 
+  // 处理一个MTR只有一条日志的情况
 	if (single_rec) {
 		/* The mtr did not modify multiple pages */
 
@@ -3269,6 +3290,8 @@ loop:
 		case MLOG_FILE_CREATE2:
 		case MLOG_FILE_RENAME2:
 		case MLOG_TRUNCATE:
+      // 这些类型的日志会在recv_parse_or_apply_log_rec_body中单独Apply
+      // 新建、删除文件等操作需要单独Apply
 			/* These were already handled by
 			recv_parse_log_rec() and
 			recv_parse_or_apply_log_rec_body(). */
@@ -3291,6 +3314,7 @@ loop:
 				}
 				/* fall through */
 			case STORE_YES:
+        // 把一个MTR中只有一条redo log的日志加进哈希表
 				recv_add_to_hash_table(
 					type, space, page_no, body,
 					ptr + len, old_lsn,
@@ -3600,6 +3624,7 @@ recv_scan_log_recs(
 	ut_ad(len % OS_FILE_LOG_BLOCK_SIZE == 0);
 	ut_ad(len >= OS_FILE_LOG_BLOCK_SIZE);
 
+  // 2MB日志为一片，对片内的日志一个block一个block的解析放到recv_sys缓存
 	do {
 		ut_ad(!finished);
 		no = log_block_get_hdr_no(log_block);
@@ -3615,6 +3640,7 @@ recv_scan_log_recs(
 			break;
 		}
 
+    // 检查LOG_BLOCK_CHECKSUM
 		if (!log_block_checksum_is_ok(log_block)) {
 			ib::error() << "Log block " << no <<
 				" at lsn " << scanned_lsn << " has valid"
@@ -3631,6 +3657,7 @@ recv_scan_log_recs(
 			break;
 		}
 
+    // 对log block做一些合法性检查
 		if (log_block_get_flush_bit(log_block)) {
 			/* This block was a start of a log flush operation:
 			we know that the previous flush operation must have
@@ -3646,6 +3673,7 @@ recv_scan_log_recs(
 
 		data_len = log_block_get_data_len(log_block);
 
+    // 对log block做一些合法性检查
 		if (scanned_lsn + data_len > recv_sys->scanned_lsn
 		    && log_block_get_checkpoint_no(log_block)
 		    < recv_sys->scanned_checkpoint_no
@@ -3664,7 +3692,7 @@ recv_scan_log_recs(
 
 			/* We found a point from which to start the parsing
 			of log records */
-
+      // 定位到一个block内的起始redo log
 			recv_sys->parse_start_lsn = scanned_lsn
 				+ log_block_get_first_rec_group(log_block);
 			recv_sys->scanned_lsn = recv_sys->parse_start_lsn;
@@ -3708,6 +3736,7 @@ recv_scan_log_recs(
 					= (70 * 1024);
 				);
 
+      // 不会有MTR所产生的redo log大小超过2M，如果读取到超过2M的redo，只能说明日志坏掉了
 			if (recv_sys->len + 4 * OS_FILE_LOG_BLOCK_SIZE
 			    >= recv_parsing_buf_size) {
 				ib::error() << "Log parsing buffer overflow."
@@ -3725,6 +3754,7 @@ recv_scan_log_recs(
 #endif /* !UNIV_HOTBACKUP */
 
 			} else if (!recv_sys->found_corrupt_log) {
+        // 把当前块真正日志数据拿出来，放到recv_sys缓存去
 				more_data = recv_sys_add_to_parsing_buf(
 					log_block, scanned_lsn);
 			}
@@ -3734,12 +3764,13 @@ recv_scan_log_recs(
 				= log_block_get_checkpoint_no(log_block);
 		}
 
+    // 当前block块内有效的redo log不足512字节，说明读取到了文件末尾，后面没有redo了
 		if (data_len < OS_FILE_LOG_BLOCK_SIZE) {
 			/* Log data for this group ends here */
 			finished = true;
 			break;
 		} else {
-			log_block += OS_FILE_LOG_BLOCK_SIZE;
+			log_block += OS_FILE_LOG_BLOCK_SIZE; // 跳到下一个block继续处理
 		}
 	} while (log_block < buf + len);
 
@@ -3756,9 +3787,11 @@ recv_scan_log_recs(
 		}
 	}
 
+  //上面已经将当前块或者之前块日志放入recv_sys缓存了，下面是对这部分数据进行处理，调用recv_parse_log_recs
 	if (more_data && !recv_sys->found_corrupt_log) {
 		/* Try to parse more log records */
 
+    // 解析recv_sys缓存中的redo日志，加到哈希表中，哈希表满了的话会自动apply
 		if (recv_parse_log_recs(checkpoint_lsn,
 					*store_to_hash)) {
 			ut_ad(recv_sys->found_corrupt_log
@@ -3768,11 +3801,14 @@ recv_scan_log_recs(
 			return(true);
 		}
 
+    //这里判断占用空间与可用空间，是否存到hash_table
 		if (*store_to_hash != STORE_NO
 		    && mem_heap_get_size(recv_sys->heap) > available_memory) {
 			*store_to_hash = STORE_NO;
 		}
 
+    //处理掉一部分日志后，缓冲区一般会有部分剩余不完整的日志，这部分日志需要读取更多日志
+    //拼接后继续处理
 		if (recv_sys->recovered_offset > recv_parsing_buf_size / 4) {
 			/* Move parsing buffer data to the buffer start */
 
@@ -3806,6 +3842,7 @@ recv_group_scan_log_recs(
 	recv_sys->len = 0;
 	recv_sys->recovered_offset = 0;
 	recv_sys->n_addrs = 0;
+  // 先清空哈希表
 	recv_sys_empty_hash();
 	srv_start_lsn = *contiguous_lsn;
 	recv_sys->parse_start_lsn = *contiguous_lsn;
@@ -3827,6 +3864,7 @@ recv_group_scan_log_recs(
 		* (buf_pool_get_n_pages()
 		   - (recv_n_pool_free_frames * srv_buf_pool_instances));
 
+  // 扫描的起点必须对齐到block大小
 	end_lsn = *contiguous_lsn = ut_uint64_align_down(
 		*contiguous_lsn, OS_FILE_LOG_BLOCK_SIZE);
 
@@ -3837,19 +3875,21 @@ recv_group_scan_log_recs(
 			merge here, because it would generate
 			redo log records before we have
 			finished the redo log scan. */
+      // 把哈希表中的redo log一条一条的apply，并清空哈希表
 			recv_apply_hashed_log_recs(FALSE);
 		}
 
 		start_lsn = end_lsn;
-		end_lsn += RECV_SCAN_SIZE;
-
-		log_group_read_log_seg(
-			log_sys->buf, group, start_lsn, end_lsn);
+		end_lsn += RECV_SCAN_SIZE; // 每次扫描4个page大小的redo
+    // 扫描redo log file，把日志放到log_sys->buf中
+    // TODO
+    // 为什么lsn增长64KB是扫描2MB日志文件
+		log_group_read_log_seg(log_sys->buf, group, start_lsn, end_lsn);
 	} while (!recv_scan_log_recs(
 			 available_mem, &store_to_hash, log_sys->buf,
 			 RECV_SCAN_SIZE,
 			 checkpoint_lsn,
-			 start_lsn, contiguous_lsn, &group->scanned_lsn));
+			 start_lsn, contiguous_lsn, &group->scanned_lsn)); // 不断的
 
 	if (recv_sys->found_corrupt_log || recv_sys->found_corrupt_fs) {
 		DBUG_RETURN(false);
@@ -4039,14 +4079,14 @@ of first system tablespace page
 @return error code or DB_SUCCESS */
 dberr_t
 recv_recovery_from_checkpoint_start(
-	lsn_t	flush_lsn)
+	lsn_t	flush_lsn) // flush_lsn即为从系统表空间ibdata第一个page读取的LSN
 {
 	log_group_t*	group;
 	log_group_t*	max_cp_group;
 	ulint		max_cp_field;
-	lsn_t		checkpoint_lsn;
+	lsn_t		checkpoint_lsn; // redo log file中最近一次checkpoint的lsn
 	bool		rescan;
-	ib_uint64_t	checkpoint_no;
+	ib_uint64_t	checkpoint_no; // redo log file中最近一次checkpoint的checkpoint_no
 	lsn_t		contiguous_lsn;
 	byte*		buf;
 	byte		log_hdr_buf[LOG_FILE_HDR_SIZE];
@@ -4054,6 +4094,7 @@ recv_recovery_from_checkpoint_start(
 
 	/* Initialize red-black tree for fast insertions into the
 	flush_list during recovery process. */
+  /* 为每个buffer pool instance创建一棵红黑树，指向buffer_pool_t::flush_rbt，主要用于加速插入flush list */
 	buf_flush_init_flush_rbt();
 
 	if (srv_force_recovery >= SRV_FORCE_NO_LOG_REDO) {
@@ -4070,8 +4111,15 @@ recv_recovery_from_checkpoint_start(
 
 	/* Look for the latest checkpoint from any of the log groups */
 
+  // 定位最近一次的checkpoint info保存的位置
 	err = recv_find_max_checkpoint(&max_cp_group, &max_cp_field);
-
+//
+//  auto log_group = UT_LIST_GET_FIRST(log_sys->log_groups);
+//  auto offset = log_group->lsn_offset;
+//  MYSQL_DPU::ApplySystem applySystem;
+//  auto my_checkpoint_lsn = applySystem.GetCheckpointLSN();
+//  auto my_checkpoint_no = applySystem.GetCheckpointNo();
+//  auto my_checkpoint_offset = applySystem.GetCheckpointOffset();
 	if (err != DB_SUCCESS) {
 
 		log_mutex_exit();
@@ -4079,10 +4127,12 @@ recv_recovery_from_checkpoint_start(
 		return(err);
 	}
 
+  // 读取最近的一次checkpoint info到log_sys->checkpoint_buf缓冲区
 	log_group_header_read(max_cp_group, max_cp_field);
 
 	buf = log_sys->checkpoint_buf;
 
+  // 读取checkpoint_lsn和checkpoint_no
 	checkpoint_lsn = mach_read_from_8(buf + LOG_CHECKPOINT_LSN);
 	checkpoint_no = mach_read_from_8(buf + LOG_CHECKPOINT_NO);
 
@@ -4091,6 +4141,7 @@ recv_recovery_from_checkpoint_start(
 
 	const page_id_t	page_id(max_cp_group->space_id, 0);
 
+  // 咋又读四个block上来？？ //TODO
 	fil_io(IORequestLogRead, true, page_id, univ_page_size, 0,
 	       LOG_FILE_HDR_SIZE, log_hdr_buf, max_cp_group);
 
@@ -4155,8 +4206,7 @@ recv_recovery_from_checkpoint_start(
 		return(DB_ERROR);
 	}
 
-	/** Scan the redo log from checkpoint lsn and redo log to
-	the hash table. */
+	/** Scan the redo log from checkpoint lsn and redo log to the hash table. */
 	rescan = recv_group_scan_log_recs(group, &contiguous_lsn, false);
 
 

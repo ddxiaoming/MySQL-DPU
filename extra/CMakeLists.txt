@@ -136,9 +136,9 @@ IF(WITH_INNOBASE_STORAGE_ENGINE)
     ENDIF()
   ENDIF()
 
-  MYSQL_ADD_EXECUTABLE(innochecksum innochecksum.cc ${INNOBASE_SOURCES})
-  TARGET_LINK_LIBRARIES(innochecksum mysys mysys_ssl ${LZ4_LIBRARY})
-  ADD_DEPENDENCIES(innochecksum GenError)
+#  MYSQL_ADD_EXECUTABLE(innochecksum innochecksum.cc ${INNOBASE_SOURCES})
+#  TARGET_LINK_LIBRARIES(innochecksum mysys mysys_ssl ${LZ4_LIBRARY})
+#  ADD_DEPENDENCIES(innochecksum GenError)
 ENDIF()
 
 IF(UNIX)

@@ -2231,7 +2231,7 @@ files_checked:
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
-		err = recv_recovery_from_checkpoint_start(flushed_lsn);
+		err = recv_recovery_from_checkpoint_start(flushed_lsn); // 开始Recovery
 
 		recv_sys->dblwr.pages.clear();
 

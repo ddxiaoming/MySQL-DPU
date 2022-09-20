@@ -27,6 +27,7 @@ INCLUDE(innodb.cmake)
 SET(INNOBASE_SOURCES
 	api/api0api.cc
 	api/api0misc.cc
+	apply/apply0apply.cc
 	btr/btr0btr.cc
 	btr/btr0cur.cc
 	btr/btr0pcur.cc
@@ -208,3 +209,6 @@ IF(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
       )
   ENDIF()
 ENDIF()
+
+#add_executable(main test/main.cpp apply/apply0apply.cc)
+#target_include_directories(main PUBLIC include)
