@@ -2986,7 +2986,6 @@ skip_this_recv_addr:
 @param[in]	apply		whether to apply MLOG_FILE_* records
 @param[out]	body		start of log record body
 @return length of the record, or 0 if the record was not complete */
-static
 ulint
 recv_parse_log_rec(
 	mlog_id_t*	type,
@@ -3216,8 +3215,14 @@ loop:
 		/* Try to parse a log record, fetching its type, space id,
 		page no, and a pointer to the body of the log record */
 
+    // 从 buffer中解析一条日志出来
 		len = recv_parse_log_rec(&type, ptr, end_ptr, &space,
 					 &page_no, true, &body);
+
+//    std::cout << "type = " << type << ", ";
+//    std::cout << "space = " << space << ", ";
+//    std::cout << "page = " << page_no << ", ";
+//    std::cout << "len = " << len << std::endl;
 
 		if (len == 0) {
 			return(false);
@@ -3342,7 +3347,10 @@ loop:
 			len = recv_parse_log_rec(
 				&type, ptr, end_ptr, &space, &page_no,
 				false, &body);
-
+//      std::cout << "type = " << type << ", ";
+//      std::cout << "space = " << space << ", ";
+//      std::cout << "page = " << page_no << ", ";
+//      std::cout << "len = " << len << std::endl;
 			if (len == 0) {
 				return(false);
 			}
@@ -4136,6 +4144,9 @@ recv_recovery_from_checkpoint_start(
 	checkpoint_lsn = mach_read_from_8(buf + LOG_CHECKPOINT_LSN);
 	checkpoint_no = mach_read_from_8(buf + LOG_CHECKPOINT_NO);
 
+  // 改动
+  checkpoint_lsn = 8716;
+
 	/* Read the first log file header to print a note if this is
 	a recovery from a restored InnoDB Hot Backup */
 
@@ -4191,6 +4202,9 @@ recv_recovery_from_checkpoint_start(
 	ut_ad(UT_LIST_GET_LEN(log_sys->log_groups) == 1);
 	group = UT_LIST_GET_FIRST(log_sys->log_groups);
 
+  // 改动
+  group->lsn = 8716;
+  group->lsn_offset = 2060;
 	ut_ad(recv_sys->n_addrs == 0);
 	contiguous_lsn = checkpoint_lsn;
 	switch (group->format) {

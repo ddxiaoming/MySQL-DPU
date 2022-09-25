@@ -87,6 +87,16 @@ Returns TRUE if recovery is currently running.
 UNIV_INLINE
 bool
 recv_recovery_is_on(void);
+
+ulint
+recv_parse_log_rec(
+    mlog_id_t*	type,
+    byte*		ptr,
+    byte*		end_ptr,
+    ulint*		space,
+    ulint*		page_no,
+    bool		apply,
+    byte**		body);
 /*=====================*/
 /************************************************************************//**
 Applies the hashed log records to the page, if the page lsn is less than the

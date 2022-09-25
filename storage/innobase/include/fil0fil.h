@@ -140,6 +140,10 @@ fil_type_is_data(
 
 struct fil_node_t;
 
+fil_space_t*
+fil_space_get_by_id(
+/*================*/
+    ulint	id);
 /** Tablespace or log data space */
 struct fil_space_t {
 	char*		name;	/*!< Tablespace name */

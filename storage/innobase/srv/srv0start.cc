@@ -111,6 +111,7 @@ Created 2/16/1996 Heikki Tuuri
 # include "zlib.h"
 # include "ut0crc32.h"
 # include "ut0new.h"
+#include "apply0apply.h"
 
 #ifdef HAVE_LZO1X
 #include <lzo/lzo1x.h>
@@ -2681,6 +2682,11 @@ files_checked:
 	os_thread_create(buf_resize_thread, NULL, NULL);
 
 	srv_was_started = TRUE;
+
+  MYSQL_DPU::ApplySystem applySystem;
+  applySystem.PopulateHashMap();
+  applySystem.ApplyHashLogs();
+
 	return(DB_SUCCESS);
 }
 

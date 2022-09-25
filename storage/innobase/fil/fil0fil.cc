@@ -380,7 +380,7 @@ fil_write(
 
 /*******************************************************************//**
 Returns the table space by a given id, NULL if not found. */
-UNIV_INLINE
+//UNIV_INLINE
 fil_space_t*
 fil_space_get_by_id(
 /*================*/
