@@ -2684,8 +2684,10 @@ files_checked:
 	srv_was_started = TRUE;
 
   MYSQL_DPU::ApplySystem applySystem;
-  applySystem.PopulateHashMap();
-  applySystem.ApplyHashLogs();
+  for (int m = 0; m < 10; m++) {
+    applySystem.PopulateHashMap();
+    applySystem.ApplyHashLogs();
+  }
 
 	return(DB_SUCCESS);
 }

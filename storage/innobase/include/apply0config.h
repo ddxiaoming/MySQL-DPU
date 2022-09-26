@@ -29,5 +29,7 @@ namespace MYSQL_DPU {
   static constexpr uint32_t PER_LOG_FILE_SIZE = 48 * 1024 * 1204; // 48M
 
   static constexpr uint32_t N_BLOCKS_IN_A_PAGE = DATA_PAGE_SIZE / LOG_BLOCK_SIZE; // 48M
+
+  static constexpr uint32_t BUFFER_POOL_SIZE = 8 * 1024 * 1024; // buffer pool size in data_page_size
 }
 #endif

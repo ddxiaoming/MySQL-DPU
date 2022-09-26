@@ -244,4 +244,5 @@ const char* GetLogString(mlog_id_t type) {
       return("MLOG_TRUNCATE");
   }
 }
+
 }

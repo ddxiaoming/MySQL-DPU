@@ -1,5 +1,6 @@
 #include "apply0apply.h"
 #include "fil0fil.h"
+#include "apply0buffer.h"
 #include "buf0buf.h"
 #include "log0recv.h"
 #include "mtr0log.h"
@@ -13,7 +14,8 @@
 #include "apply0utility.h"
 #include <cstring>
 #include <fstream>
-
+#include <dbg.h>
+#include <thread>
 namespace MYSQL_DPU {
 
 ApplySystem::ApplySystem() :
@@ -26,18 +28,19 @@ meta_data_buf_(new unsigned char[meta_data_buf_size_]),
 checkpoint_lsn_(0),
 checkpoint_no_(0),
 checkpoint_offset_(0),
-next_fetch_page_id(0),
+log_file_size_(48 * 1024 * 1024), // 48MB
+next_fetch_page_id_(0),
+next_fetch_block_(-1),
+log_max_page_id_(log_file_size_ / DATA_PAGE_SIZE),
 finished_(false),
 next_lsn_(MY_LOG_START_LSN),
-data_path_("/home/lemon/mysql/data/"),
-space_id_2_file_name_()
+log_file_path_("/home/lemon/mysql/data/ib_logfile0"),
+log_stream_(log_file_path_, std::ios::in | std::ios::binary)
 {
-  // 填充meta_data_buf
-  page_id_t metadata_page_id(REDO_LOG_SPACE_ID, 0);
-  fil_io(IORequestLogRead, true,
-         metadata_page_id, DEFAULT_PAGE_SIZE,
-         0, meta_data_buf_size_, static_cast<void *>(meta_data_buf_), NULL);
-  // 设置checkpoint_lsn和checkpoint_no
+  // 1.填充meta_data_buf
+  log_stream_.read(reinterpret_cast<char *>(meta_data_buf_), meta_data_buf_size_);
+
+  // 2.设置checkpoint_lsn和checkpoint_no
   uint32_t checkpoint_no_1 = mach_read_from_8(meta_data_buf_ + 1 * LOG_BLOCK_SIZE + LOG_CHECKPOINT_NO);
   uint32_t checkpoint_no_2 = mach_read_from_8(meta_data_buf_ + 3 * LOG_BLOCK_SIZE + LOG_CHECKPOINT_NO);
   if (checkpoint_no_1 > checkpoint_no_2) {
@@ -50,21 +53,6 @@ space_id_2_file_name_()
     checkpoint_offset_ = mach_read_from_8(meta_data_buf_ + 3 * LOG_BLOCK_SIZE + LOG_CHECKPOINT_OFFSET);
   }
 
-  // 构建映射表
-  std::vector<std::string> filenames;
-  TravelDirectory(data_path_, ".ibd", filenames);
-  std::ifstream ifs;
-  unsigned char page_buf[DATA_PAGE_SIZE];
-  for (auto & filename : filenames) {
-    ifs.open(filename, std::ios::in | std::ios::binary);
-    ifs.read(reinterpret_cast<char *>(page_buf), DATA_PAGE_SIZE);
-    uint32_t space_id = mach_read_from_4(page_buf + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
-    space_id_2_file_name_.insert({space_id, filename});
-    ifs.close();
-  }
-//  for (const auto &item: space_id_2_file_name_) {
-//    std::cerr << "space_id = " << item.first << ", filename = " << item.second << std::endl;
-//  }
 }
 
 ApplySystem::~ApplySystem() {
@@ -75,25 +63,50 @@ ApplySystem::~ApplySystem() {
 }
 
 bool ApplySystem::PopulateHashMap() {
-  // 当前所有日志都处理完毕了
-  if (finished_) return false;
 
-  hash_map_.clear();
+  if (next_fetch_page_id_ > log_max_page_id_) {
+    std::cerr << "we have processed all redo log."
+              << std::endl;
+    return false;
+  }
   unsigned char buf[DATA_PAGE_SIZE];
+  hash_map_.clear();
+
   // 1.填充parse buffer
-  for (uint32_t i = 0; i < parse_buf_size_ / DATA_PAGE_SIZE; ++i) {
-    page_id_t page_id(REDO_LOG_SPACE_ID, i);
-    fil_io(IORequestLogRead, true,
-           page_id, DEFAULT_PAGE_SIZE,
-           0, DATA_PAGE_SIZE,
-           static_cast<void *>(buf), NULL);
-    for (uint32_t j = 0; j < DATA_PAGE_SIZE / LOG_BLOCK_SIZE; ++j) {
-      if (i == 0 && j < 4) continue; // 跳过前面4个block
-      auto hdr_no = ~LOG_BLOCK_FLUSH_BIT_MASK & mach_read_from_4(buf + j * LOG_BLOCK_SIZE);
-      auto data_len = mach_read_from_2(buf + j * LOG_BLOCK_SIZE + LOG_BLOCK_HDR_DATA_LEN);
-      auto first_rec = mach_read_from_2(buf + j * LOG_BLOCK_SIZE + LOG_BLOCK_FIRST_REC_GROUP);
-      auto checkpoint_no = mach_read_from_4(buf + j * LOG_BLOCK_SIZE + LOG_BLOCK_CHECKPOINT_NO);
-      auto checksum = mach_read_from_4(buf + j * LOG_BLOCK_SIZE + LOG_BLOCK_CHECKSUM);
+  uint32_t end_page_id = next_fetch_page_id_ + (parse_buf_size_ - parse_buf_content_size_) / DATA_PAGE_SIZE;
+  for (; next_fetch_page_id_ < end_page_id; ++next_fetch_page_id_) {
+    std::cerr << "next_fetch_page_id_:" << next_fetch_page_id_ << std::endl;
+    log_stream_.seekg(next_fetch_page_id_ * DATA_PAGE_SIZE);
+    // 读一个Page放到buf里面去
+    log_stream_.read(reinterpret_cast<char *>(buf), DATA_PAGE_SIZE);
+
+    for (int block = 0; block < static_cast<int>((DATA_PAGE_SIZE / LOG_BLOCK_SIZE)); ++block) {
+      std::cerr << "block:" << block << std::endl;
+      if (next_fetch_page_id_ == 0 && block < 4) continue; // 跳过前面4个block
+      auto hdr_no = ~LOG_BLOCK_FLUSH_BIT_MASK & mach_read_from_4(buf + block * LOG_BLOCK_SIZE);
+      auto data_len = mach_read_from_2(buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_HDR_DATA_LEN);
+      auto first_rec = mach_read_from_2(buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_FIRST_REC_GROUP);
+      auto checkpoint_no = mach_read_from_4(buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_CHECKPOINT_NO);
+      auto checksum = mach_read_from_4(buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_CHECKSUM);
+      // 这个block还没装满，不断轮询这个page的这个block，直到它被装满
+      if (data_len != 512) {
+        std::cerr << "waiting for (page_id = "
+                  << next_fetch_page_id_ << ", block = "
+                  << block << ") be filled." << std::endl;
+
+        unsigned char tmp_buf[DATA_PAGE_SIZE];
+        while (data_len != 512) {
+          using namespace std::chrono_literals;
+          std::this_thread::sleep_for(1s);
+
+          log_stream_.seekg(next_fetch_page_id_ * DATA_PAGE_SIZE);
+          log_stream_.read(reinterpret_cast<char *>(tmp_buf), DATA_PAGE_SIZE);
+          data_len = mach_read_from_2(tmp_buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_HDR_DATA_LEN);
+        }
+        std::cerr << "(page_id = "
+                  << next_fetch_page_id_ << ", block = "
+                  << block << ") was filled." << std::endl;
+      }
       // 每个block的日志掐头去尾放到parse buffer中
       uint32_t len = data_len - LOG_BLOCK_HDR_SIZE - LOG_BLOCK_TRL_SIZE;
 //      std::cerr << "hdr_no = " << hdr_no << ", data_len = " << data_len << ", "
@@ -101,54 +114,36 @@ bool ApplySystem::PopulateHashMap() {
 //                << "checksum = " << checksum << std::endl;
 
       std::memcpy(parse_buf_ + parse_buf_content_size_,
-                  buf + j * LOG_BLOCK_SIZE + LOG_BLOCK_HDR_SIZE, len);
+                  buf + block * LOG_BLOCK_SIZE + LOG_BLOCK_HDR_SIZE, len);
       parse_buf_content_size_ += len;
-      if (data_len != 512) {
-        finished_ = true;
-        break;
-      }
     }
   }
-
-  bool single_rec = false;
-
 
   // 2.从parse buffer中循环解析日志，放到哈希表中
   uint32_t parsed_len = 0; // 已经解析出来的日志的总长度
-  unsigned char *end_ptr = parse_buf_ + parse_buf_content_size_;
-loop:
-  unsigned char *start_ptr = parse_buf_ + parsed_len;
-  if (start_ptr == end_ptr) return true;
-  ulint len = 0, space_id, page_id;
-  mlog_id_t	type;
-  byte *log_body_ptr = nullptr;
-  len = recv_parse_log_rec(&type, start_ptr, end_ptr, &space_id,
-                           &page_id, false, &log_body_ptr);
-
-  parsed_len += len;
-  if (len != 0 && log_body_ptr != nullptr) {
-    // 有些类型的log跳过，不是对page所做的修改，不能加入哈希表
-    switch (type) {
-      case MLOG_MULTI_REC_END:
-      case MLOG_DUMMY_RECORD:
-      case MLOG_FILE_DELETE:
-      case MLOG_FILE_CREATE2:
-      case MLOG_FILE_RENAME2:
-      case MLOG_FILE_NAME:
-      case MLOG_CHECKPOINT:
-        goto loop;
-    }
+  unsigned char *end_ptr = parse_buf_ + parse_buf_content_size_ - 1;
+  unsigned char *start_ptr = parse_buf_;
+  while (start_ptr < end_ptr) {
+    ulint len = 0, space_id, page_id;
+    mlog_id_t	type;
+    byte *log_body_ptr = nullptr;
+    len = recv_parse_log_rec(&type, start_ptr, end_ptr, &space_id,
+                             &page_id, false, &log_body_ptr);
+    start_ptr += len;
+    if (len == 0) break;
     // 加入哈希表
-    hash_map_[space_id][page_id].emplace_back(type,space_id,page_id,
-                                              next_lsn_,log_body_ptr,
-                                              start_ptr + len);
-
+    hash_map_[space_id][page_id].emplace_back(type, space_id, page_id,
+                                              next_lsn_, len, log_body_ptr,
+                                              log_body_ptr + len - 1);
+    next_lsn_ += len;
+//    ofs << "type = " << GetLogString(type)
+//        << ", space_id = " << space_id << ", page_id = "
+//        << page_id << std::endl;
   }
-  assert(parsed_len <= parse_buf_size_);
-  if (len != 0) {
-    goto loop;
-  }
 
+  // 把没有解析完成的日志移动到缓冲区左边
+  parse_buf_content_size_ = end_ptr - start_ptr + 1;
+  std::memcpy(parse_buf_, start_ptr, parse_buf_content_size_);
   return true;
 }
 
@@ -159,20 +154,111 @@ bool ApplySystem::ApplyHashLogs() {
     for (const auto &pages_logs: spaces_logs.second) {
 
       // 获取需要的page
-      unsigned char page_buf[DATA_PAGE_SIZE];
-      memset(page_buf, 0, DATA_PAGE_SIZE);
-      std::ifstream ifs;
-      ifs.open(space_id_2_file_name_[spaces_logs.first], std::ios::in | std::ios::binary);
-      ifs.seekg(pages_logs.first * DATA_PAGE_SIZE);
-      ifs.read(reinterpret_cast<char *>(page_buf), DATA_PAGE_SIZE);
+//      unsigned char page_buf[DATA_PAGE_SIZE];
+//      memset(page_buf, 0, DATA_PAGE_SIZE);
+//      std::ifstream ifs;
+//      ifs.open(space_id_2_file_name_[spaces_logs.first], std::ios::in | std::ios::binary);
+//      ifs.seekg(pages_logs.first * DATA_PAGE_SIZE);
+//      ifs.read(reinterpret_cast<char *>(page_buf), DATA_PAGE_SIZE);
       for (const auto &log: pages_logs.second) {
-        ApplyOneLog(page_buf, log);
-//        std::cerr << "applied" <<
+//        ApplyOneLog(page_buf, log);
+        ofs << "type = " << GetLogString(log.type_)
+            << ", space_id = " << log.space_no_ << ", page_id = "
+            << log.page_no_ << ", data_len = " << log.log_body_len_ << ", lsn = " << log.lsn_ << std::endl;
       }
 //      buf_block_t buf_block;
     }
   }
 }
+
+static void ApplyMLOG_INIT_FILE_PAGE2(unsigned char *page, const LogEntry &log) {
+  // 从buffer pool分配一个page,赋值对应的space_id,page_no为对应的值.
+  memset(page, 0, DATA_PAGE_SIZE);
+  mach_write_to_4(page + FIL_PAGE_OFFSET, log.page_no_);
+  mach_write_to_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID,
+                  log.space_no_);
+}
+static const unsigned char infimum_supremum_compact[] = {
+    /* the infimum record */
+    0x01/*n_owned=1*/,
+    0x00, 0x02/* heap_no=0, REC_STATUS_INFIMUM */,
+    0x00, 0x0d/* pointer to supremum */,
+    'i', 'n', 'f', 'i', 'm', 'u', 'm', 0,
+    /* the supremum record */
+    0x01/*n_owned=1*/,
+    0x00, 0x0b/* heap_no=1, REC_STATUS_SUPREMUM */,
+    0x00, 0x00/* end of record list */,
+    's', 'u', 'p', 'r', 'e', 'm', 'u', 'm'
+};
+static void ApplyMLOG_COMP_PAGE_CREATE(unsigned char *page, const LogEntry &log) {
+  // 初始化page的infimum、supremum、N_HEAP等
+
+  // 设置页面的类型
+  mach_write_to_2(page + FIL_PAGE_TYPE, FIL_PAGE_INDEX);
+  memset(page + PAGE_HEADER, 0, PAGE_HEADER_PRIV_END);
+  page[PAGE_HEADER + PAGE_N_DIR_SLOTS + 1] = 2; // 初始化PAGE_N_DIR_SLOTS属性
+  page[PAGE_HEADER + PAGE_DIRECTION + 1] = PAGE_NO_DIRECTION; // // 初始化PAGE_DIRECTION属性
+  page[PAGE_HEADER + PAGE_N_HEAP] = 0x80;/*page_is_comp()*/
+  page[PAGE_HEADER + PAGE_N_HEAP + 1] = PAGE_HEAP_NO_USER_LOW;
+  page[PAGE_HEADER + PAGE_HEAP_TOP + 1] = PAGE_NEW_SUPREMUM_END;
+  memcpy(page + PAGE_DATA, infimum_supremum_compact,
+         sizeof infimum_supremum_compact);
+  memset(page
+         + PAGE_NEW_SUPREMUM_END, 0,
+         UNIV_PAGE_SIZE - PAGE_DIR - PAGE_NEW_SUPREMUM_END);
+  page[UNIV_PAGE_SIZE - PAGE_DIR - PAGE_DIR_SLOT_SIZE * 2 + 1]
+      = PAGE_NEW_SUPREMUM;
+  page[UNIV_PAGE_SIZE - PAGE_DIR - PAGE_DIR_SLOT_SIZE + 1]
+      = PAGE_NEW_INFIMUM;
+}
+
+static void ApplyMLOG_N_BYTES(unsigned char *page, const LogEntry &log) {
+  unsigned long	offset;
+  unsigned long		val;
+  uint64_t 	dval;
+  const unsigned char *ptr = log.log_body_start_ptr_, *end_ptr = log.log_body_end_ptr_;
+  if (end_ptr < ptr + 2) {
+    return;
+  }
+  offset = mach_read_from_2(log.log_body_start_ptr_);
+  ptr += 2;
+
+  if (log.type_ == MLOG_8BYTES) {
+    dval = mach_u64_parse_compressed(&ptr, end_ptr);
+    if (ptr == nullptr) {
+      return;
+    }
+    mach_write_to_8(page + offset, dval);
+    return;
+  }
+
+  val = mach_parse_compressed(&ptr, end_ptr);
+
+  if (ptr == nullptr) {
+    return;
+  }
+
+  switch (log.type_) {
+    case MLOG_1BYTE:
+      if (val > 0xFFUL) {
+        return;
+      }
+      mach_write_to_1(page + offset, val);
+      break;
+    case MLOG_2BYTES:
+      if (val > 0xFFFFUL) {
+        return;
+      }
+      mach_write_to_2(page + offset, val);
+      break;
+    case MLOG_4BYTES:
+      mach_write_to_4(page + offset, val);
+      break;
+    default:
+      break;
+  }
+}
+
 
 bool ApplySystem::ApplyOneLog(unsigned char *page, const LogEntry &log) {
   auto *block = static_cast<buf_block_t *>(malloc(sizeof(buf_block_t)));

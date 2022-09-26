@@ -12,15 +12,16 @@ namespace MYSQL_DPU {
 class LogEntry {
 public:
   LogEntry(mlog_id_t type, space_no_t space_no,
-           page_no_t page_no, lsn_t lsn,
+           page_no_t page_no, lsn_t lsn, uint32_t log_body_len,
            unsigned char *log_body_start_ptr, unsigned char *log_body_end_ptr) :
-           type_(type), space_no_(space_no), page_no_(page_no), lsn_(lsn),
+           type_(type), space_no_(space_no), page_no_(page_no), lsn_(lsn), log_body_len_(log_body_len),
            log_body_start_ptr_(log_body_start_ptr), log_body_end_ptr_(log_body_end_ptr)
            {}
   mlog_id_t type_;
   space_no_t space_no_;
   page_no_t page_no_;
   lsn_t lsn_;
+  uint32_t log_body_len_;
   unsigned char *log_body_start_ptr_;
   unsigned char *log_body_end_ptr_;
 };
@@ -66,20 +67,27 @@ private:
 
   uint32_t checkpoint_offset_;
 
-  // 下次取出log file中这个log block no代表的block到log_buf_中
-  uint32_t next_fetch_page_id;
+  uint32_t log_file_size_;
 
+  // 下次取出log file中这个log block no代表的block到log_buf_中
+  uint32_t next_fetch_page_id_;
+  // 如果这个值不为-1，说明某一次解析日志时，page内有剩余没有解析完成的日志，下次需要把这个page解析完成
+  int next_fetch_block_;
+
+  uint32_t log_max_page_id_;
   // 产生的所有日志都已经apply完了
   bool finished_;
 
   // 下一条日志的LSN
   lsn_t next_lsn_;
 
-  // 数据目录的path
-  std::string data_path_;
+  // redo log file path
+  std::string log_file_path_;
 
-  // space_id -> file name的映射表
-  std::unordered_map<uint32_t, std::string> space_id_2_file_name_;
+  // 用来读取log文件的流
+  std::ifstream log_stream_;
+
+  std::ofstream ofs{"/home/lemon/redolog2.txt"};
 };
 }
 #endif
