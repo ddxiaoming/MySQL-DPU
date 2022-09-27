@@ -259,6 +259,24 @@ static void ApplyMLOG_N_BYTES(unsigned char *page, const LogEntry &log) {
   }
 }
 
+static void ApplyMLOG_COMP_REC_INSERT(unsigned char *page, const LogEntry &log) {
+  unsigned char *ptr = log.log_body_start_ptr_;
+  unsigned char *end_ptr = log.log_body_end_ptr_;
+  if (end_ptr < ptr + 4) {
+    return;
+  }
+  // 解析number of columns 和 number of unique columns
+  uint16_t n_columns = mach_read_from_2(ptr);
+  ptr += 2;
+  uint16_t n_uniq_columns = mach_read_from_2(ptr);
+  ptr += 2;
+  if (end_ptr < ptr + n_columns * 2) {
+    return;
+  }
+  // 跳过Field Type Info字段，对我们没有用
+  ptr += 2 * n_columns;
+
+}
 
 bool ApplySystem::ApplyOneLog(unsigned char *page, const LogEntry &log) {
   auto *block = static_cast<buf_block_t *>(malloc(sizeof(buf_block_t)));

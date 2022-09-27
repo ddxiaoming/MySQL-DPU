@@ -1187,6 +1187,7 @@ page_cur_parse_insert_rec(
 			return(NULL);
 		}
 
+    // 解析出上一条记录的偏移量
 		offset = mach_read_from_2(ptr);
 		ptr += 2;
 

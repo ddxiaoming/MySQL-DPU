@@ -1927,7 +1927,6 @@ recv_parse_or_apply_log_rec_body(
 		break;
 	case MLOG_REC_INSERT: case MLOG_COMP_REC_INSERT:
 		ut_ad(!page || fil_page_type_is_index(page_type));
-
 		if (NULL != (ptr = mlog_parse_index(
 				     ptr, end_ptr,
 				     type == MLOG_COMP_REC_INSERT,
