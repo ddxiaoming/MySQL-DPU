@@ -40,6 +40,7 @@ Created 9/20/1997 Heikki Tuuri
 
 #include "log0recv.h"
 
+std::ofstream log_ofs("/home/lemon/myredolog.txt", std::ios::out | std::ios::trunc);
 #ifdef UNIV_NONINL
 #include "log0recv.ic"
 #endif
@@ -1926,6 +1927,12 @@ recv_parse_or_apply_log_rec_body(
 		}
 		break;
 	case MLOG_REC_INSERT: case MLOG_COMP_REC_INSERT:
+    // 改动
+    if (type == MLOG_COMP_REC_INSERT) {
+      log_ofs << "type = " << "MLOG_COMP_REC_INSERT" << std::endl;
+      log_ofs << "space id = " << space_id << std::endl;
+      log_ofs << "page id = " << page_no << std::endl;
+    }
 		ut_ad(!page || fil_page_type_is_index(page_type));
 		if (NULL != (ptr = mlog_parse_index(
 				     ptr, end_ptr,
@@ -1953,6 +1960,12 @@ recv_parse_or_apply_log_rec_body(
 		}
 		break;
 	case MLOG_COMP_REC_SEC_DELETE_MARK:
+    // 改动
+    if (type == MLOG_COMP_REC_SEC_DELETE_MARK) {
+      log_ofs << "type = " << "MLOG_COMP_REC_SEC_DELETE_MARK" << std::endl;
+      log_ofs << "space id = " << space_id << std::endl;
+      log_ofs << "page id = " << page_no << std::endl;
+    }
 		ut_ad(!page || fil_page_type_is_index(page_type));
 		/* This log record type is obsolete, but we process it for
 		backward compatibility with MySQL 5.0.3 and 5.0.4. */
@@ -1964,11 +1977,14 @@ recv_parse_or_apply_log_rec_body(
 		}
 		/* Fall through */
 	case MLOG_REC_SEC_DELETE_MARK:
+
 		ut_ad(!page || fil_page_type_is_index(page_type));
 		ptr = btr_cur_parse_del_mark_set_sec_rec(ptr, end_ptr,
 							 page, page_zip);
 		break;
-	case MLOG_REC_UPDATE_IN_PLACE: case MLOG_COMP_REC_UPDATE_IN_PLACE:
+	case MLOG_REC_UPDATE_IN_PLACE:
+  case MLOG_COMP_REC_UPDATE_IN_PLACE:
+
 		ut_ad(!page || fil_page_type_is_index(page_type));
 
 		if (NULL != (ptr = mlog_parse_index(
@@ -3205,6 +3221,10 @@ loop:
 		single_rec = !!(*ptr & MLOG_SINGLE_REC_FLAG);
 	}
 
+  // 改动
+  static int count = 0;
+  std::string str;
+  static std::ofstream ofs("/home/lemon/redolog.txt", std::ios::out | std::ios::trunc);
   // 处理一个MTR只有一条日志的情况
 	if (single_rec) {
 		/* The mtr did not modify multiple pages */
@@ -3226,6 +3246,12 @@ loop:
 		if (len == 0) {
 			return(false);
 		}
+
+    // 改动
+//    ofs << "type = " << get_mlog_string(type)
+//        << ", space_id = " << space << ", page_id = "
+//        << page_no << ", data_len = " << len << std::endl;
+    ++count;
 
 		if (recv_sys->found_corrupt_log) {
 			recv_report_corrupt_log(
@@ -3333,7 +3359,19 @@ loop:
 				old_lsn, get_mlog_string(type),
 				len, space, page_no));
 		}
-	} else {
+
+    // 改动
+    str += "type = ";
+    str += get_mlog_string(type);
+    str += ", space_id = ";
+    str += space;
+    str +=  ", page_id = ";
+    str += page_no;
+    str+= ", data_len = ";
+    str += len;
+    str += "\n";
+	}
+  else {
 		/* Check that all the records associated with the single mtr
 		are included within the buffer */
 
@@ -3346,14 +3384,10 @@ loop:
 			len = recv_parse_log_rec(
 				&type, ptr, end_ptr, &space, &page_no,
 				false, &body);
-//      std::cout << "type = " << type << ", ";
-//      std::cout << "space = " << space << ", ";
-//      std::cout << "page = " << page_no << ", ";
-//      std::cout << "len = " << len << std::endl;
 			if (len == 0) {
 				return(false);
 			}
-
+      ++count;
 			if (recv_sys->found_corrupt_log
 			    || type == MLOG_CHECKPOINT
 			    || (*ptr & MLOG_SINGLE_REC_FLAG)) {
@@ -3497,8 +3531,19 @@ loop:
 
 			ptr += len;
 		}
+    // 改动
+    str += "type = ";
+    str += get_mlog_string(type);
+    str += ", space_id = ";
+    str += space;
+    str +=  ", page_id = ";
+    str += page_no;
+    str+= ", data_len = ";
+    str += len;
+    str += "\n";
 	}
 
+  ofs << str.c_str();
 	goto loop;
 }
 

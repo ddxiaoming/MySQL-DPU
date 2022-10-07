@@ -20,7 +20,7 @@ namespace MYSQL_DPU {
 
 ApplySystem::ApplySystem() :
 hash_map_(),
-parse_buf_size_(2 * 1024 * 1024), // 2M
+parse_buf_size_(32 * 1024), // 32KB
 parse_buf_(new unsigned char[parse_buf_size_]),
 parse_buf_content_size_(0),
 meta_data_buf_size_(LOG_BLOCK_SIZE * N_LOG_METADATA_BLOCKS), // 4 blocks
@@ -121,7 +121,7 @@ bool ApplySystem::PopulateHashMap() {
 
   // 2.从parse buffer中循环解析日志，放到哈希表中
   uint32_t parsed_len = 0; // 已经解析出来的日志的总长度
-  unsigned char *end_ptr = parse_buf_ + parse_buf_content_size_ - 1;
+  unsigned char *end_ptr = parse_buf_ + parse_buf_content_size_;
   unsigned char *start_ptr = parse_buf_;
   while (start_ptr < end_ptr) {
     ulint len = 0, space_id, page_id;
@@ -136,13 +136,13 @@ bool ApplySystem::PopulateHashMap() {
                                               next_lsn_, len, log_body_ptr,
                                               log_body_ptr + len - 1);
     next_lsn_ += len;
-//    ofs << "type = " << GetLogString(type)
-//        << ", space_id = " << space_id << ", page_id = "
-//        << page_id << std::endl;
+    ofs << "type = " << GetLogString(type)
+        << ", space_id = " << space_id << ", page_id = "
+        << page_id << ", data_len = " << len << std::endl;
   }
 
   // 把没有解析完成的日志移动到缓冲区左边
-  parse_buf_content_size_ = end_ptr - start_ptr + 1;
+  parse_buf_content_size_ = end_ptr - start_ptr;
   std::memcpy(parse_buf_, start_ptr, parse_buf_content_size_);
   return true;
 }
@@ -164,7 +164,7 @@ bool ApplySystem::ApplyHashLogs() {
 //        ApplyOneLog(page_buf, log);
         ofs << "type = " << GetLogString(log.type_)
             << ", space_id = " << log.space_no_ << ", page_id = "
-            << log.page_no_ << ", data_len = " << log.log_body_len_ << ", lsn = " << log.lsn_ << std::endl;
+            << log.page_no_ << ", data_len = " << log.log_body_len_ << std::endl;
       }
 //      buf_block_t buf_block;
     }

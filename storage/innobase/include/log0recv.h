@@ -41,6 +41,7 @@ Created 9/20/1997 Heikki Tuuri
 #include "log0log.h"
 #include "mtr0types.h"
 #include "ut0new.h"
+#include <fstream>
 
 #include <list>
 #include <vector>
@@ -88,6 +89,8 @@ UNIV_INLINE
 bool
 recv_recovery_is_on(void);
 
+// 改动
+extern std::ofstream log_ofs;
 ulint
 recv_parse_log_rec(
     mlog_id_t*	type,

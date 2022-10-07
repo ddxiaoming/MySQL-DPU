@@ -87,7 +87,7 @@ private:
   // 用来读取log文件的流
   std::ifstream log_stream_;
 
-  std::ofstream ofs{"/home/lemon/redolog2.txt"};
+  std::ofstream ofs{"/home/lemon/redolog3.txt"};
 };
 }
 #endif

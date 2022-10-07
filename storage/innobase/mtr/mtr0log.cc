@@ -566,8 +566,14 @@ mlog_parse_index(
 			return(NULL);
 		}
 		n = mach_read_from_2(ptr);
+    // 改动
+    log_ofs << "number of columns = " << n << std::endl;
+    log_ofs.flush();
 		ptr += 2;
 		n_uniq = mach_read_from_2(ptr);
+    // 改动
+    log_ofs << "number of unique columns = " << n_uniq << std::endl;
+    log_ofs.flush();
 		ptr += 2;
 		ut_ad(n_uniq <= n);
 		if (end_ptr < ptr + n * 2) {
@@ -589,6 +595,14 @@ mlog_parse_index(
 	if (comp) {
 		for (i = 0; i < n; i++) {
 			ulint	len = mach_read_from_2(ptr);
+
+      // 改动
+      log_ofs << "field len = ";
+      if (!(len & 0x8000)) log_ofs << "NULL ";
+      else log_ofs << "NOT NULL ";
+      if ((len & 0x7fff) == 0 || (len & 0x7fff) == 0x7fff) log_ofs << "variable-length" << std::endl;
+      else log_ofs << "fixed-length(" << (len & 0x7fff) << ")" << std::endl;
+      log_ofs.flush();
 			ptr += 2;
 			/* The high-order bit of len is the NOT NULL flag;
 			the rest is 0 or 0x7fff for variable-length fields,

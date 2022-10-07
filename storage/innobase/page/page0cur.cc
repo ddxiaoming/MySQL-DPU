@@ -1189,6 +1189,9 @@ page_cur_parse_insert_rec(
 
     // 解析出上一条记录的偏移量
 		offset = mach_read_from_2(ptr);
+
+    // log_ofs
+    log_ofs << "previous record offset = " << offset << std::endl;
 		ptr += 2;
 
 		cursor_rec = page + offset;
@@ -1202,7 +1205,8 @@ page_cur_parse_insert_rec(
 	}
 
 	end_seg_len = mach_parse_compressed(&ptr, end_ptr);
-
+  // log_ofs
+  log_ofs << "end_seg_len = " << end_seg_len << std::endl;
 	if (ptr == NULL) {
 
 		return(NULL);
@@ -1223,10 +1227,14 @@ page_cur_parse_insert_rec(
 		}
 
 		info_and_status_bits = mach_read_from_1(ptr);
+    // log_ofs
+    log_ofs << "info_and_status_bits = " << info_and_status_bits << std::endl;
 		ptr++;
 
 		origin_offset = mach_parse_compressed(&ptr, end_ptr);
 
+    // log_ofs
+    log_ofs << "origin_offset = " << origin_offset << std::endl;
 		if (ptr == NULL) {
 
 			return(NULL);
@@ -1236,6 +1244,8 @@ page_cur_parse_insert_rec(
 
 		mismatch_index = mach_parse_compressed(&ptr, end_ptr);
 
+    // log_ofs
+    log_ofs << "mismatch_index = " << mismatch_index << std::endl;
 		if (ptr == NULL) {
 
 			return(NULL);
