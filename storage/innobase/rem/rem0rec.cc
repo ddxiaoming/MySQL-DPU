@@ -266,11 +266,13 @@ rec_init_offsets_comp_ordinary(
 	ulint		i		= 0;
 	ulint		offs		= 0;
 	ulint		any_ext		= 0;
-	ulint		n_null		= index->n_nullable;
+	ulint		n_null		= index->n_nullable; // 有几列可以为null
 	const byte*	nulls		= temp
 		? rec - 1
-		: rec - (1 + REC_N_NEW_EXTRA_BYTES);
-	const byte*	lens		= nulls - UT_BITS_IN_BYTES(n_null);
+		: rec - (1 + REC_N_NEW_EXTRA_BYTES); // null值列表的末端地址
+
+    // 如何计算出来NULL值列表需要多少位来存储？这里就是答案
+	const byte*	lens		= nulls - UT_BITS_IN_BYTES(n_null); // 变长字段长度列表的末端地址
 	ulint		null_mask	= 1;
 
 #ifdef UNIV_DEBUG
@@ -318,6 +320,7 @@ rec_init_offsets_comp_ordinary(
 			null_mask <<= 1;
 		}
 
+    // 怎么找到一条rec的开头？这就是答案
 		if (!field->fixed_len
 		    || (temp && !dict_col_get_fixed_size(col, temp))) {
 			ut_ad(col->mtype != DATA_POINT);
@@ -1027,6 +1030,7 @@ rec_get_converted_size_comp(
 	return(size + rec_get_converted_size_comp_prefix_low(
 		       index, fields, n_fields, NULL, extra, false));
 }
+
 
 /***********************************************************//**
 Sets the value of the ith field SQL null bit of an old-style record. */

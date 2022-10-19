@@ -64,7 +64,7 @@ sudo useradd -r -g mysql -s /bin/false mysql
 
 ```shell
 cd ./cmake-build-debug/sql
-./mysqld --basedir=/home/lemon/mysql --datadir=/home/lemon/mysql/data --lower_case_table_names=0 --initialize-insecure --user=mysql
+./mysqld --basedir=/home/lemon/mysql --datadir=/home/lemon/mysql/data --lower_case_table_names=0 --user=mysql --innodb_buffer_pool_size=1G --innodb-flush-method=O_DIRECT --innodb_flush_log_at_trx_commit=1 --innodb_log_file_size=10G --initialize-insecure
 ```
 
 解决启动 `Error` ：

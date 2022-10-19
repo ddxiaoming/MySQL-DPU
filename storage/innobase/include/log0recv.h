@@ -89,8 +89,6 @@ UNIV_INLINE
 bool
 recv_recovery_is_on(void);
 
-// 改动
-extern std::ofstream log_ofs;
 ulint
 recv_parse_log_rec(
     mlog_id_t*	type,

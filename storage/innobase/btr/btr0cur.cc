@@ -4953,11 +4953,9 @@ btr_cur_parse_del_mark_set_sec_rec(
 	}
 
 	val = mach_read_from_1(ptr);
-  log_ofs << "val = " << val << std::endl;
 	ptr++;
 
 	offset = mach_read_from_2(ptr);
-  log_ofs << "offset = " << offset << std::endl;
 	ptr += 2;
 
 	ut_a(offset <= UNIV_PAGE_SIZE);

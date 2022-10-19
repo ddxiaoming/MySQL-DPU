@@ -40,7 +40,6 @@ Created 9/20/1997 Heikki Tuuri
 
 #include "log0recv.h"
 
-std::ofstream log_ofs("/home/lemon/myredolog.txt", std::ios::out | std::ios::trunc);
 #ifdef UNIV_NONINL
 #include "log0recv.ic"
 #endif
@@ -1685,7 +1684,7 @@ a page log record should not be applied
 @return log record end, NULL if not a complete record */
 static
 byte*
-recv_parse_or_apply_log_rec_body(
+recv_parse_or_apply_log_rec_body( // Apply的逻辑从这里开始
 	mlog_id_t	type,
 	byte*		ptr,
 	byte*		end_ptr,
@@ -1927,12 +1926,6 @@ recv_parse_or_apply_log_rec_body(
 		}
 		break;
 	case MLOG_REC_INSERT: case MLOG_COMP_REC_INSERT:
-    // 改动
-    if (type == MLOG_COMP_REC_INSERT) {
-      log_ofs << "type = " << "MLOG_COMP_REC_INSERT" << std::endl;
-      log_ofs << "space id = " << space_id << std::endl;
-      log_ofs << "page id = " << page_no << std::endl;
-    }
 		ut_ad(!page || fil_page_type_is_index(page_type));
 		if (NULL != (ptr = mlog_parse_index(
 				     ptr, end_ptr,
@@ -1960,12 +1953,6 @@ recv_parse_or_apply_log_rec_body(
 		}
 		break;
 	case MLOG_COMP_REC_SEC_DELETE_MARK:
-    // 改动
-    if (type == MLOG_COMP_REC_SEC_DELETE_MARK) {
-      log_ofs << "type = " << "MLOG_COMP_REC_SEC_DELETE_MARK" << std::endl;
-      log_ofs << "space id = " << space_id << std::endl;
-      log_ofs << "page id = " << page_no << std::endl;
-    }
 		ut_ad(!page || fil_page_type_is_index(page_type));
 		/* This log record type is obsolete, but we process it for
 		backward compatibility with MySQL 5.0.3 and 5.0.4. */
@@ -2748,6 +2735,7 @@ loop:
 					buf_block_dbg_add_level(
 						block, SYNC_NO_ORDER_CHECK);
 
+          // 恢复一个page
 					recv_recover_page(FALSE, block);
 					mtr_commit(&mtr);
 				} else {
@@ -3247,11 +3235,10 @@ loop:
 			return(false);
 		}
 
-    // 改动
 //    ofs << "type = " << get_mlog_string(type)
 //        << ", space_id = " << space << ", page_id = "
 //        << page_no << ", data_len = " << len << std::endl;
-    ++count;
+//    ++count;
 
 		if (recv_sys->found_corrupt_log) {
 			recv_report_corrupt_log(
@@ -3364,12 +3351,13 @@ loop:
     str += "type = ";
     str += get_mlog_string(type);
     str += ", space_id = ";
-    str += space;
+    str += std::to_string(space);
     str +=  ", page_id = ";
-    str += page_no;
+    str += std::to_string(page_no);
     str+= ", data_len = ";
-    str += len;
+    str += std::to_string(len);
     str += "\n";
+    ++count;
 	}
   else {
 		/* Check that all the records associated with the single mtr
@@ -3387,7 +3375,18 @@ loop:
 			if (len == 0) {
 				return(false);
 			}
+      // 改动
+      str += "type = ";
+      str += get_mlog_string(type);
+      str += ", space_id = ";
+      str += std::to_string(space);
+      str +=  ", page_id = ";
+      str += std::to_string(page_no);
+      str += ", data_len = ";
+      str += std::to_string(len);
+      str += "\n";
       ++count;
+//      ++count;
 			if (recv_sys->found_corrupt_log
 			    || type == MLOG_CHECKPOINT
 			    || (*ptr & MLOG_SINGLE_REC_FLAG)) {
@@ -3471,7 +3470,6 @@ loop:
 			len = recv_parse_log_rec(
 				&type, ptr, end_ptr, &space, &page_no,
 				true, &body);
-
 			if (recv_sys->found_corrupt_log
 			    && !recv_report_corrupt_log(
 				    ptr, type, space, page_no)) {
@@ -3489,8 +3487,13 @@ loop:
 			recv_sys->recovered_lsn
 				= recv_calc_lsn_on_data_add(old_lsn, len);
 
+
+
 			switch (type) {
 			case MLOG_MULTI_REC_END:
+        // 改动
+        ofs.write(str.c_str(), str.size());
+        ofs.flush();
 				/* Found the end mark for the records */
 				goto loop;
 #ifdef UNIV_LOG_LSN_DEBUG
@@ -3530,20 +3533,14 @@ loop:
 			}
 
 			ptr += len;
+
 		}
-    // 改动
-    str += "type = ";
-    str += get_mlog_string(type);
-    str += ", space_id = ";
-    str += space;
-    str +=  ", page_id = ";
-    str += page_no;
-    str+= ", data_len = ";
-    str += len;
-    str += "\n";
 	}
 
-  ofs << str.c_str();
+  // 改动
+  ofs.write(str.c_str(), str.size());
+  ofs.flush();
+
 	goto loop;
 }
 
