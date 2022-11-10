@@ -1,3 +1,9 @@
+# 0. 依赖
+在 `Ubuntu20.04` 下：
+```shell
+sudo apt install libssl-dev bison pkg-config
+```
+
 # 1. 构建项目
 
 ## Debug模式
